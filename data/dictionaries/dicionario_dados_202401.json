@@ -1,0 +1,89 @@
+{
+  "schema_version": "1.0",
+  "nome": "Dicionário de dados demonstrativo — 202401_NFs",
+  "descricao": "Descrições conservadoras das colunas observadas nos dois CSVs do pacote 202401. Este arquivo não contém registros fiscais e não substitui documentação oficial da fonte.",
+  "observacoes": [
+    "Identificadores devem ser preservados como texto quando isso evitar perda de zeros ou formatação.",
+    "Campos indicadores e códigos são descritos sem atribuir significado aos seus valores quando esse mapeamento não está disponível.",
+    "Valores monetários e quantidades representam o conteúdo informado no arquivo de origem."
+  ],
+  "relacionamentos": [
+    {
+      "dataset_origem": "202401_NFs_Cabecalho.csv",
+      "coluna_origem": "CHAVE DE ACESSO",
+      "dataset_destino": "202401_NFs_Itens.csv",
+      "coluna_destino": "CHAVE DE ACESSO",
+      "descricao": "Relaciona uma nota fiscal do cabeçalho aos itens que possuem a mesma chave de acesso."
+    }
+  ],
+  "datasets": {
+    "202401_NFs_Cabecalho.csv": {
+      "descricao": "Registros de cabeçalho de notas fiscais do pacote 202401.",
+      "formato": {
+        "encoding": "utf-8",
+        "separador": ",",
+        "decimal": "."
+      },
+      "colunas": {
+        "CHAVE DE ACESSO": "Identificador da nota fiscal usado também para relacionar o cabeçalho aos itens.",
+        "MODELO": "Código do modelo do documento fiscal conforme informado na fonte.",
+        "SÉRIE": "Série do documento fiscal conforme informada na fonte.",
+        "NÚMERO": "Número do documento fiscal conforme informado na fonte.",
+        "NATUREZA DA OPERAÇÃO": "Descrição da natureza da operação registrada no documento.",
+        "DATA EMISSÃO": "Data, e eventualmente horário, de emissão registrada no documento.",
+        "EVENTO MAIS RECENTE": "Descrição ou código do evento mais recente registrado para o documento.",
+        "DATA/HORA EVENTO MAIS RECENTE": "Data e hora registradas para o evento mais recente.",
+        "CPF/CNPJ Emitente": "Identificador CPF ou CNPJ do emitente, preservado como valor textual.",
+        "RAZÃO SOCIAL EMITENTE": "Nome ou razão social informada para o emitente.",
+        "INSCRIÇÃO ESTADUAL EMITENTE": "Inscrição estadual informada para o emitente.",
+        "UF EMITENTE": "Sigla da unidade federativa informada para o emitente.",
+        "MUNICÍPIO EMITENTE": "Município informado para o emitente.",
+        "CNPJ DESTINATÁRIO": "CNPJ informado para o destinatário, preservado como valor textual.",
+        "NOME DESTINATÁRIO": "Nome ou razão social informada para o destinatário.",
+        "UF DESTINATÁRIO": "Sigla da unidade federativa informada para o destinatário.",
+        "INDICADOR IE DESTINATÁRIO": "Código indicador de inscrição estadual do destinatário conforme a fonte.",
+        "DESTINO DA OPERAÇÃO": "Classificação de destino da operação conforme registrada na fonte.",
+        "CONSUMIDOR FINAL": "Indicador de consumidor final conforme registrado na fonte.",
+        "PRESENÇA DO COMPRADOR": "Indicador de presença do comprador conforme registrado na fonte.",
+        "VALOR NOTA FISCAL": "Valor total da nota fiscal conforme registrado no cabeçalho."
+      }
+    },
+    "202401_NFs_Itens.csv": {
+      "descricao": "Registros de itens de notas fiscais do pacote 202401.",
+      "formato": {
+        "encoding": "utf-8",
+        "separador": ",",
+        "decimal": "."
+      },
+      "colunas": {
+        "CHAVE DE ACESSO": "Identificador da nota fiscal à qual o item está associado.",
+        "MODELO": "Código do modelo do documento fiscal conforme informado na fonte.",
+        "SÉRIE": "Série do documento fiscal conforme informada na fonte.",
+        "NÚMERO": "Número do documento fiscal conforme informado na fonte.",
+        "NATUREZA DA OPERAÇÃO": "Descrição da natureza da operação registrada no documento.",
+        "DATA EMISSÃO": "Data, e eventualmente horário, de emissão registrada no documento.",
+        "CPF/CNPJ Emitente": "Identificador CPF ou CNPJ do emitente, preservado como valor textual.",
+        "RAZÃO SOCIAL EMITENTE": "Nome ou razão social informada para o emitente.",
+        "INSCRIÇÃO ESTADUAL EMITENTE": "Inscrição estadual informada para o emitente.",
+        "UF EMITENTE": "Sigla da unidade federativa informada para o emitente.",
+        "MUNICÍPIO EMITENTE": "Município informado para o emitente.",
+        "CNPJ DESTINATÁRIO": "CNPJ informado para o destinatário, preservado como valor textual.",
+        "NOME DESTINATÁRIO": "Nome ou razão social informada para o destinatário.",
+        "UF DESTINATÁRIO": "Sigla da unidade federativa informada para o destinatário.",
+        "INDICADOR IE DESTINATÁRIO": "Código indicador de inscrição estadual do destinatário conforme a fonte.",
+        "DESTINO DA OPERAÇÃO": "Classificação de destino da operação conforme registrada na fonte.",
+        "CONSUMIDOR FINAL": "Indicador de consumidor final conforme registrado na fonte.",
+        "PRESENÇA DO COMPRADOR": "Indicador de presença do comprador conforme registrado na fonte.",
+        "NÚMERO PRODUTO": "Número sequencial ou identificador do item conforme informado na fonte.",
+        "DESCRIÇÃO DO PRODUTO/SERVIÇO": "Descrição textual do produto ou serviço informada no item.",
+        "CÓDIGO NCM/SH": "Código NCM/SH informado para o produto ou serviço.",
+        "NCM/SH (TIPO DE PRODUTO)": "Descrição de tipo ou classificação associada ao código NCM/SH na fonte.",
+        "CFOP": "Código CFOP informado para a operação do item.",
+        "QUANTIDADE": "Quantidade registrada para o item, interpretada em conjunto com a coluna UNIDADE.",
+        "UNIDADE": "Unidade de medida informada para a quantidade do item.",
+        "VALOR UNITÁRIO": "Valor unitário registrado para o item.",
+        "VALOR TOTAL": "Valor total registrado para o item."
+      }
+    }
+  }
+}

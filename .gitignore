@@ -15,6 +15,7 @@ venv/
 .env
 .env.*
 !.env.example
+.streamlit/secrets.toml
 
 # IDE e sistema
 .idea/

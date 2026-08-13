@@ -1,7 +1,8 @@
-langchain>=0.3,<2
-langchain-openai>=0.2,<2
+langchain>=1.0,<2
+langchain-groq>=1.0,<2
+numpy>=1.26,<3
 pandas>=2.2,<4
 plotly>=5.22,<7
 python-dotenv>=1.0,<2
-streamlit>=1.36,<2
+streamlit>=1.61,<2
 pytest>=8.2,<10
