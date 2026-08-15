@@ -1,280 +1,585 @@
-# Relatório técnico — Interface Inteligente para Consulta de Arquivos CSV
+# IICA-CSV — Interface Inteligente para Consulta de Arquivos CSV
 
-> Documento-fonte do Desafio 4. Campos entre colchetes devem ser preenchidos somente após confirmação pela equipe ou execução real. Não substituir placeholders de resultados por estimativas.
+## Relatório técnico final — Desafio 4
 
-## 1. Identificação do grupo
-
-- **Nome do grupo:** `[PREENCHER]`
-- **Integrantes e identificação:** `[CONFIRMAR NOMES COMPLETOS E DADOS EXIGIDOS PELO CURSO]`
-- **Curso:** InsurMinds / I2A2
-- **Desafio:** Desafio 4 — Interface Inteligente para Consulta de Arquivos CSV
-- **Data da entrega:** `[PREENCHER]`
-
-## 2. Introdução
-
-O desafio propõe uma interface capaz de receber conjuntos de dados em CSV e responder perguntas formuladas em linguagem natural. A solução precisa combinar uma LLM e ferramentas de análise sem perder rastreabilidade: interpretar a pergunta é responsabilidade do agente, enquanto números, filtros, agrupamentos e rankings devem ser obtidos diretamente dos dados.
-
-O MVP descrito neste relatório utiliza uma aplicação Streamlit única, um agente LangChain conectado à Groq e operações pandas determinísticas. Essa divisão permite demonstrar uso real de IA sem delegar ao modelo cálculos que podem ser executados e testados localmente.
-
-## 3. Objetivo
-
-Construir um MVP funcional que:
-
-- receba um ZIP contendo um ou mais CSVs e, quando disponível, um dicionário de dados;
-- reconheça os formatos presentes nos dois pacotes oficiais;
-- mantenha os dados somente na sessão da aplicação;
-- interprete perguntas em português por meio de um agente;
-- execute consultas seguras por tools com pandas;
-- apresente resposta textual, tabela e gráfico quando apropriado;
-- trate entradas inválidas e limitações sem inventar resultados.
-
-## 4. Framework escolhido
-
-Foi escolhido **LangChain 1.x**, usando a API `create_agent`. O modelo de chat é fornecido por `ChatGroq`, do pacote `langchain-groq`, com modelo padrão `llama-3.3-70b-versatile` e temperatura zero.
-
-LangChain foi selecionado por oferecer o ciclo de tool calling necessário ao desafio: o agente interpreta a solicitação, escolhe uma operação registrada, recebe o resultado e formula a resposta. A lógica de dados não depende do framework e pode ser testada sem chamada à LLM.
-
-## 5. Tecnologias
-
-| Tecnologia | Uso no MVP |
+| Identificação | Informação |
 |---|---|
-| Python 3.11+ | linguagem e runtime |
-| Streamlit | carga do ZIP, chat e apresentação |
-| LangChain 1.x | criação e orquestração do agente |
-| langchain-groq / ChatGroq | acesso ao modelo Groq |
-| NumPy | tipos numéricos usados pelo pandas e serialização segura |
-| pandas | leitura e análise tabular local |
-| Plotly | barras de ranking e linhas temporais |
-| python-dotenv | configuração local por `.env` |
-| pytest | testes determinísticos |
+| Projeto | IICA-CSV — Intelligent CSV Analytics |
+| Curso | Agentes Inteligentes — InsurMinds / I2A2 |
+| Desafio | Desafio 4 — Interface Inteligente para Consulta de Arquivos CSV |
+| Repositório | `malandrindev/IICA-CSV-desafio4` |
+| Branch de validação | `feature/desafio4-mvp` |
+| Versão documentada | MVP final |
+| Data desta consolidação | 14/08/2026 |
+| Estado do documento | Fonte Markdown final, pronta para revisão e exportação em PDF |
 
-A chave Groq não é incluída no código. O arquivo `.env.example` documenta as variáveis esperadas e `.env` permanece ignorado pelo Git.
+Este documento consolida a documentação técnica da solução com a implementação efetivamente presente em `src/iica_csv/`, os testes automatizados e as evidências visuais registradas em `screenshots/`. Exemplos conceituais e resultados provisórios foram substituídos por contratos, nomes de colunas e resultados efetivamente observados na aplicação.
 
-## 6. Arquitetura
+## 1. Resumo executivo
 
-O fluxo deliberadamente contém apenas um agente:
+O IICA-CSV é um MVP para consulta, em linguagem natural, de um pacote ZIP com um ou mais arquivos CSV. A solução possui duas interfaces integradas no Streamlit: a primeira recebe, valida e cataloga os dados; a segunda permite que o usuário faça perguntas e receba texto, fonte dos dados, evidência tabular e, quando aplicável, gráfico.
+
+A arquitetura utiliza um único agente LangChain com `ChatGroq`. Antes da chamada ao modelo, um resolvedor semântico local usa o schema e, quando disponível, o dicionário de dados para produzir planos de consulta. O modelo atua como intérprete e orquestrador das ferramentas. Os cálculos quantitativos são executados localmente por operações pandas restritas e determinísticas; o LLM não recebe os DataFrames completos e não executa código gerado pelo usuário.
+
+O MVP foi demonstrado com dois pacotes oficiais de perfis distintos:
+
+- o pacote de demonstração 202401, com dois datasets, 665 registros e dicionário de dados;
+- o pacote oficial 202505, com aproximadamente 44,9 MB, dois datasets e 700.407 registros em CP1252, separados por ponto e vírgula e com decimal por vírgula.
+
+As quatro perguntas obrigatórias foram executadas na aplicação e estão documentadas neste relatório com resultados, parâmetros analíticos e capturas de tela. A suíte automatizada final registrou `155 passed`.
+
+## 2. Objetivo e requisitos atendidos
+
+O objetivo foi construir uma aplicação simples, demonstrável e tecnicamente defensável que permitisse:
+
+1. enviar um ZIP diretamente pela interface;
+2. localizar e ler múltiplos CSVs, inclusive em subdiretórios;
+3. usar um dicionário de dados JSON ou CSV quando presente;
+4. continuar funcionando quando o dicionário estiver ausente;
+5. interpretar perguntas em linguagem natural;
+6. executar cálculos reais sobre os dados sem delegá-los ao LLM;
+7. apresentar respostas rastreáveis por dataset, colunas, operação e evidência;
+8. tratar ambiguidades, erros de entrada e falhas da API com mensagens compreensíveis.
+
+A solução mantém deliberadamente um único agente principal. Não foram introduzidos arquitetura multi-agent, RAG, banco vetorial, banco SQL, API REST separada ou execução de código arbitrário. Essa restrição reduz o número de componentes, facilita os testes e torna o fluxo mais fácil de explicar durante a avaliação.
+
+## 3. Framework e tecnologias
+
+| Tecnologia | Papel na solução |
+|---|---|
+| Python 3.11+ | linguagem e ambiente de execução |
+| Streamlit | Interface A, Interface B, estado da sessão e apresentação das evidências |
+| LangChain 1.x | criação e execução do agente por meio de `create_agent` |
+| `langchain-groq` / `ChatGroq` | integração do agente com a API Groq |
+| Groq | provedor do modelo de linguagem |
+| pandas | leitura, transformação e cálculos determinísticos sobre os CSVs |
+| NumPy | apoio à serialização e a operações tabulares |
+| Plotly | gráficos de barras e linhas derivados dos resultados estruturados |
+| `python-dotenv` | leitura local do arquivo `.env` |
+| pytest | testes determinísticos e testes do agente com modelos falsos, sem chamadas reais à Groq |
+
+O modelo é configurável pela variável `GROQ_MODEL`. O valor padrão e o modelo usado na validação funcional foram `llama-3.3-70b-versatile`. O `ChatGroq` é criado com `temperature=0`, timeout de 60 segundos e `max_retries=2`. A temperatura zero reduz a variabilidade da orquestração, mas não torna um serviço de LLM matematicamente determinístico; o determinismo dos números vem das tools pandas.
+
+As demais configurações são centralizadas em `src/iica_csv/config.py`: `GROQ_API_KEY`, `GROQ_MODEL`, `APP_MAX_UPLOAD_MB` e `LOG_LEVEL`. A chave permanece fora do código e do repositório.
+
+## 4. Arquitetura da solução
+
+A carga e a consulta compartilham a mesma aplicação, mas seguem fluxos distintos. O resolvedor semântico ocorre antes da chamada ao modelo, e o resultado das tools é validado novamente após a execução.
 
 ```text
+Interface A — carga
+
 Usuário
   → Streamlit
-  → validação e leitura segura do ZIP
-  → DataManager/catálogo em st.session_state
-  → agente LangChain + ChatGroq
+  → ZipProcessor (validação e leitura segura)
+  → CSVReader (encoding, separador, decimal e conversões conservadoras)
+  → DataManager (DataFrames e catálogo em memória)
+  → st.session_state
+
+Interface B — consulta
+
+Usuário
+  → Streamlit / histórico da sessão
+  → resolvedor semântico local
+       ├─ pergunta inequívoca: SemanticQueryPlan(s)
+       └─ pergunta ambígua: PendingClarification
+  → CSVAgent
+  → create_agent + ChatGroq
   → tools determinísticas
   → pandas
-  → resultado estruturado e limitado
-  → Streamlit: texto, tabela ou gráfico
+  → ToolResult(s) estruturados e limitados
+  → validação pós-tool contra o(s) plano(s)
+  → resposta textual + fonte + tabela + gráfico quando aplicável
 ```
 
-As responsabilidades estão separadas em quatro áreas:
+O notebook `workspaces/leo-vilelela/csv_agent_notebook.ipynb` permanece preservado como registro da prova de conceito. Conceitos validados nessa PoC, como catálogo de DataFrames, múltiplos CSVs, tools, histórico e visualização, foram promovidos para módulos oficiais em `src/iica_csv/`.
 
-- `processing`: validação do ZIP, leitura de CSV e catálogo;
-- `tools`: operações permitidas sobre pandas;
-- `agents`: prompt, ChatGroq e orquestração das tools;
-- `ui`: estado da sessão, upload, chat e visualização.
+## 5. Componentes principais
 
-Não são usados multi-agent, RAG, banco vetorial, banco SQL, API web separada, frontend separado ou execução de código produzido pela LLM.
+### 5.1 Configuração
 
-**Figura da arquitetura final:** `[INSERIR SOMENTE SE AJUDAR A APRESENTAÇÃO]`
+`src/iica_csv/config.py` define o contrato imutável `Settings` e carrega as variáveis do ambiente. Se a chave Groq não estiver configurada, a interface mantém os dados carregados visíveis, desabilita a entrada de consulta e orienta o usuário a preencher o `.env`, sem apresentar traceback bruto.
 
-## 7. Processamento dos dados
+### 5.2 Processamento do pacote
 
-O ZIP é recebido diretamente do componente de upload. O processador verifica formato, limite e nomes de entradas, rejeitando caminho absoluto e componentes de travessia. Os arquivos são lidos diretamente do ZIP, sem `extractall`.
+`src/iica_csv/processing/zip_processor.py` contém `ZipProcessor` e o contrato `ProcessedPackage`. O processador aceita bytes, caminho ou o objeto enviado pelo Streamlit. Ele identifica os CSVs e candidatos a dicionário, associa descrições aos datasets e registra tudo em um `DataManager`.
 
-O leitor testa combinações controladas de:
+O ZIP não é extraído para o sistema de arquivos. Cada entrada necessária é aberta diretamente com `ZipFile.open`, depois de validada.
 
-- `utf-8-sig`, `utf-8`, `cp1252` e `latin-1`;
-- separador `,` ou `;`;
-- decimal `.` ou `,`.
+### 5.3 Leitura dos CSVs
 
-Uma combinação só é aceita quando produz estrutura plausível; isso reduz o risco de interpretar o arquivo inteiro como uma coluna. O catálogo registra nome, dimensões, colunas, tipos, nulos, encoding e separador. Conversões numéricas e de data são conservadoras.
+`src/iica_csv/processing/csv_reader.py` trabalha com um conjunto controlado de formatos:
 
-O `DataManager`, baseado no conceito validado na prova de conceito de Leonardo Vilela, mantém os DataFrames e metadados em memória durante a sessão. Cabeçalho e itens compartilham `CHAVE DE ACESSO`, mas as perguntas atuais não exigem join. Uma necessidade futura de relacionamento deverá ser implementada como tool explícita e testada; o agente não cria junções arbitrárias.
-
-Um dicionário JSON ou CSV é associado aos datasets quando localizado. Sua ausência não interrompe a carga; a aplicação informa “Dicionário de dados não identificado no pacote.”
-
-## 8. Agente inteligente
-
-O agente funciona como orquestrador, não como mecanismo de cálculo. Seu prompt exige que toda afirmação numérica provenha de uma tool e o impede de:
-
-- inventar números, colunas ou significados;
-- calcular mentalmente quando existe uma tool apropriada;
-- atribuir causalidade ou julgamento qualitativo a um ranking;
-- responder pergunta externa como se a informação estivesse no dataset;
-- revelar a chave Groq;
-- executar código ou comandos enviados pelo usuário.
-
-Quando faltar uma coluna ou informação, a resposta deve declarar a limitação. Perguntas materialmente ambíguas devem gerar pedido de esclarecimento. A LLM recebe somente schema, metadados, descrições, resultados limitados e amostras pequenas quando indispensáveis; o DataFrame completo nunca é enviado.
-
-Para reduzir erros de escolha semântica, o agente possui um resolvedor local que
-deriva do schema e do dicionário um plano de chamada sem resultados. Esse plano
-separa emitente de destinatário, volume (`SUM` de quantidade) de contagem de
-registros e valor das notas no cabeçalho de valor dos itens. Depois do tool
-calling, dataset, colunas e operação registrados nos metadados são conferidos
-antes de a resposta ser aceita.
-
-## 9. Tools
-
-| Tool | Operações principais |
+| Propriedade | Valores suportados |
 |---|---|
-| `list_datasets` | nomes e resumo do catálogo |
-| `describe_dataset` | schema, tipos, nulos e dicionário |
-| `aggregate_data` | soma, média, contagem, mínimo e máximo; agrupamento opcional |
-| `top_n` | maiores ou menores grupos com N limitado |
-| `filter_data` | filtros simples por operadores autorizados |
-| `unique_values` | valores distintos limitados |
-| `time_aggregation` | agregação por ano, mês ou ano-mês |
+| Encoding | `utf-8-sig`, `utf-8`, `cp1252`, `latin-1` |
+| Separador | vírgula (`,`) e ponto e vírgula (`;`) |
+| Decimal | ponto (`.`) e vírgula (`,`) |
 
-As tools validam nomes, tipos, operações e limites antes de acessar pandas. Seus resultados distinguem `scalar`, `table`, `series` e `error`, com resumo, colunas, linhas limitadas, sugestão de gráfico e metadados. Não são permitidos `eval`, `exec`, Python gerado, SQL arbitrário ou shell.
+O leitor examina uma amostra para priorizar encodings, pontua a consistência dos separadores e identifica a convenção decimal. O CSV é inicialmente lido como texto. Em seguida, valores vazios são normalizados e somente colunas reconhecidas de forma segura como numéricas ou temporais são convertidas. Identificadores são preservados como texto, e uma conversão não substitui a coluna quando nem todos os valores presentes podem ser interpretados com segurança.
 
-## 10. Fluxo da aplicação
+Uma leitura que produza somente uma coluna é rejeitada, pois normalmente indica escolha incorreta do delimitador.
 
-1. O usuário abre a aplicação e encontra a interface de carga.
-2. O ZIP enviado é validado e suas entradas seguras são catalogadas.
-3. Cada CSV é lido com a combinação adequada de encoding, separador e decimal.
-4. O dicionário é carregado quando disponível.
-5. O `DataManager` e o histórico são registrados em `st.session_state`.
-6. A interface de consulta é habilitada.
-7. O usuário envia uma pergunta em linguagem natural.
-8. O agente seleciona uma tool e fornece argumentos estruturados.
-9. A tool calcula localmente e retorna um resultado limitado.
-10. O agente redige a resposta fundamentada.
-11. A interface apresenta texto e, quando aplicável, tabela ou Plotly.
+### 5.4 Catálogo em memória
 
-## 11. Tratamento de erros
+`src/iica_csv/processing/data_manager.py` implementa `DataManager`. Cada dataset mantém:
 
-| Situação | Comportamento esperado |
+- nome lógico e nome do arquivo de origem;
+- quantidade de linhas e colunas;
+- lista de colunas e tipos pandas;
+- quantidade de nulos por coluna;
+- encoding, separador e decimal detectados;
+- nó relacionado do dicionário;
+- descrição do dataset e descrições de colunas, quando disponíveis.
+
+Os DataFrames ficam em memória durante a sessão Streamlit. Não há banco, persistência entre sessões ou estado global criado pelo `DataManager`.
+
+### 5.5 Resolvedor semântico
+
+`src/iica_csv/agents/semantic_resolver.py` não contém um segundo agente. É uma camada local composta por funções e dataclasses, entre elas `SemanticQueryPlan`, `SemanticResolution` e `PendingClarification`.
+
+O resolvedor avalia nomes dos datasets, nomes das colunas e descrições do dicionário, sem ler registros para escolher uma coluna. Ele distingue, entre outros papéis:
+
+- fornecedor, supplier, emitente ou vendedor → nome/razão social do emitente;
+- cliente, comprador ou destinatário → nome/razão social do destinatário;
+- volume comprado → quantidade somada e agrupada pela descrição do produto;
+- total das notas → valor da nota no dataset de cabeçalho;
+- valor explicitamente dos itens → valor total no dataset de itens;
+- agregação mensal → data de emissão e período `year-month`.
+
+Quando há uma correspondência segura, o resolvedor cria um plano contendo somente identificadores e parâmetros — nunca registros nem o resultado. Empates ou ausência de uma coluna confiável não são resolvidos por adivinhação.
+
+### 5.6 Agente e erros externos
+
+`src/iica_csv/agents/csv_agent.py` implementa o único agente da aplicação, `CSVAgent`. Ele cria o executor com `create_agent`, um `ChatGroq`, o prompt de grounding e as sete tools. O método `ask` coordena resolução semântica, histórico, chamada do agente, coleta de resultados, validação pós-tool e seleção das evidências exibíveis.
+
+`src/iica_csv/agents/groq_errors.py` classifica falhas externas antes de apresentá-las na interface. Há mensagens distintas para:
+
+- HTTP 400 relacionado à validação de tool call;
+- HTTP 401 de autenticação;
+- HTTP 403 de permissão;
+- HTTP 429 de limite temporário;
+- timeout;
+- erro de conexão;
+- demais erros.
+
+Um erro HTTP 400 genérico não é classificado como falha de autenticação. A UI recebe uma mensagem estável e sanitizada; detalhes técnicos permanecem no logging do backend. O retry configurado é o do próprio cliente Groq, sem uma segunda camada de repetição na aplicação.
+
+### 5.7 Interface e renderização
+
+`src/iica_csv/ui/app.py` contém as duas interfaces, gerencia a sessão e cria o agente somente quando ocorre a primeira consulta. A mesma instância é reutilizada enquanto o pacote permanecer carregado.
+
+`src/iica_csv/ui/rendering.py` apresenta a fonte a partir dos metadados do `ToolResult`, renderiza tabelas para resultados tabulares ou séries e cria gráficos apenas quando o contrato indica `bar` ou `line`, há dados suficientes e os eixos são válidos. Múltiplas evidências permanecem ordenadas e recebem tratamento visual simétrico quando são comparáveis.
+
+## 6. Fluxo de processamento e execução
+
+### 6.1 Carga
+
+1. O usuário seleciona um arquivo `.zip` no `st.file_uploader`.
+2. Ao acionar **Processar pacote**, o estado analítico anterior é liberado.
+3. O `ZipProcessor` confere extensão, assinatura e integridade do ZIP.
+4. As entradas passam pelos controles de caminho, tipo, tamanho e compressão.
+5. Dicionários candidatos são lidos como JSON ou CSV; a ausência gera aviso, não falha.
+6. Cada CSV é interpretado pelo `CSVReader`.
+7. Os DataFrames e metadados são registrados no `DataManager`.
+8. O pacote e o catálogo são armazenados em `st.session_state`.
+9. A interface apresenta arquivos, datasets, dimensões e formatos detectados.
+
+### 6.2 Consulta
+
+1. O usuário envia uma pergunta pelo chat.
+2. Uma eventual clarificação pendente é verificada antes de tratar a mensagem como nova pergunta.
+3. O resolvedor semântico local cria um ou mais planos, ou solicita esclarecimento.
+4. Os planos são enviados ao agente como orientação delimitada, sem resultados do CSV.
+5. O LLM escolhe e chama as tools tipadas.
+6. As tools validam parâmetros e calculam localmente com pandas.
+7. Cada chamada produz um `ToolResult` pequeno e serializável.
+8. O agente compara as evidências analíticas aos planos esperados. Divergências de dataset, coluna, operação, agrupamento, direção ou tamanho do ranking são bloqueadas.
+9. A resposta e todas as evidências necessárias são devolvidas ao Streamlit.
+10. A interface persiste o turno na sessão e renderiza texto, fonte, tabela e gráfico aplicável.
+
+## 7. Uso do LLM e ferramentas determinísticas
+
+### 7.1 Divisão de responsabilidades
+
+| Camada | Responsabilidade |
 |---|---|
-| extensão enganosa ou arquivo não ZIP | rejeitar com mensagem clara |
-| Zip Slip ou caminho absoluto | rejeitar o pacote sem extrair entradas |
-| ZIP sem CSV | informar que nenhum CSV foi encontrado |
-| CSV ilegível/ambíguo | identificar o arquivo e explicar que o formato não pôde ser lido |
-| dicionário ausente | continuar e informar a ausência |
-| dataset ou coluna inexistente | retornar erro estruturado e não calcular |
-| pergunta ambígua | pedir esclarecimento |
-| pergunta fora do escopo | declarar que os dados não sustentam a resposta |
-| chave Groq ausente | orientar edição do `.env` |
-| falha do provedor | informar indisponibilidade sem traceback bruto |
+| Resolvedor local | reconhecer intenções conhecidas, selecionar semanticamente dataset/colunas/operação e detectar ambiguidades |
+| LLM | interpretar a linguagem natural, orquestrar tools e redigir uma resposta concisa |
+| Tools | validar operações autorizadas, executar o cálculo e devolver evidência estruturada |
+| pandas | realizar filtros, agrupamentos, agregações, ordenação e tratamento temporal |
+| Streamlit/Plotly | apresentar resposta, fonte, tabela e visualização |
 
-Logs devem ajudar no diagnóstico sem registrar credenciais ou despejar os dados completos.
+O LLM recebe a pergunta, um histórico limitado, planos semânticos, schema/metadados quando solicitados e resultados limitados das tools. Os wrappers LangChain não colocam os DataFrames completos no retorno. Filtros podem fornecer apenas pequenos recortes controlados.
 
-## 12. Segurança
+### 7.2 Tools disponíveis
 
-- proteção contra Zip Slip e rejeição de entrada insegura;
-- nenhuma extração indiscriminada com `extractall`;
-- limites de upload, entradas e linhas de resposta;
-- nenhuma execução de código, SQL ou shell originado na pergunta;
-- chave somente em variável de ambiente local;
-- `.env`, datasets e ZIPs ignorados pelo Git;
-- DataFrames restritos à sessão;
-- contexto mínimo enviado à Groq;
-- mensagens públicas sem segredo ou traceback bruto.
+| Tool | Operação autorizada |
+|---|---|
+| `list_datasets` | lista datasets e metadados essenciais, sem registros dos CSVs |
+| `describe_dataset` | retorna schema, tipos, nulos e descrições do dicionário |
+| `aggregate_data` | executa `sum`, `mean`, `count`, `min` ou `max`, com agrupamento opcional |
+| `top_n` | agrega grupos e retorna os maiores ou menores, com N limitado |
+| `filter_data` | aplica filtros `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `contains` ou `in` |
+| `unique_values` | lista valores distintos com limite |
+| `time_aggregation` | agrega por `year`, `month` ou `year-month` |
 
-O script do pacote demo apenas lê `data/raw/202401_NFs.zip`, copia os dois CSVs para outro ZIP e adiciona um dicionário sem registros fiscais. Ele não modifica nem extrai o arquivo original.
+O agrupamento aceita até três colunas. Os resultados são limitados a no máximo 50 linhas, e textos extensos também são truncados antes da serialização. Em `top_n`, o parâmetro `n` aceita inteiro ou string numérica no contrato exposto ao modelo, é normalizado localmente com `int` e precisa ser maior que zero.
 
-## 13. Testes
+### 7.3 Contrato de resultado
 
-Os testes determinísticos devem cobrir:
+`ToolResult` é uma dataclass com os seguintes campos:
 
-- ZIP válido, não ZIP, ZIP sem CSV e Zip Slip;
-- UTF-8 com vírgula e CP1252 com ponto e vírgula;
-- decimal com ponto e decimal com vírgula;
-- soma, média, contagem, agrupamento e top N;
-- filtro, valores únicos e coluna inexistente;
-- contrato do agente com modelo falso, se aplicável, sem chamada real à Groq.
-- resolução semântica de aliases, granularidade e `SUM` versus `COUNT` com
-  catálogos sintéticos adversariais e com o dicionário demonstrativo.
+- `result_type`: `scalar`, `table`, `series` ou `error`;
+- `summary`: resumo do cálculo;
+- `columns`: colunas do resultado;
+- `rows`: registros limitados e seguros para JSON;
+- `chart_hint`: `none`, `bar` ou `line`;
+- `metadata`: tool, dataset, colunas, operação e demais parâmetros usados.
 
-**Comandos da validação final:**
+Esse contrato sustenta a rastreabilidade visual e a validação pós-tool. Em uma resposta com duas análises, os dois resultados são preservados; um resultado posterior não substitui a evidência anterior.
+
+## 8. Resolução semântica, grounding e clarificação
+
+O uso apenas de nomes parecidos seria insuficiente nos datasets de notas fiscais, pois cabeçalho e itens compartilham várias colunas. Por isso, a escolha combina schema, descrições do dicionário e regras conservadoras de granularidade.
+
+Três decisões foram particularmente importantes:
+
+1. `RAZÃO SOCIAL EMITENTE` representa fornecedor/emitente, enquanto `NOME DESTINATÁRIO` representa cliente/comprador;
+2. volume comprado significa `SUM(QUANTIDADE)`, e não contagem de linhas;
+3. total gasto ou valor das notas utiliza `VALOR NOTA FISCAL` no cabeçalho; `VALOR TOTAL` dos itens só é escolhido quando a pergunta menciona explicitamente itens.
+
+### 8.1 Clarificação pendente
+
+Quando falta uma métrica objetiva, o resolvedor devolve uma resposta de clarificação antes de chamar o LLM. O objeto `PendingClarification` preserva de forma tipada:
+
+- as dimensões pendentes, como fornecedor e/ou cliente;
+- as métricas aceitas;
+- o tamanho `n` do ranking;
+- a direção crescente ou decrescente;
+- eventual qualificador qualitativo.
+
+A UI mantém esse objeto em `st.session_state` e o fornece no turno seguinte. `resolve_pending_clarification` reconhece complementos de um vocabulário fechado, como “valor total”, “quantidade comprada” e “número de documentos”. O complemento preenche apenas a informação ausente; dimensão, ordem e tamanho anteriores são mantidos. Quando a clarificação é consumida, o retorno passa a conter `None`, impedindo que uma pergunta independente herde o contexto antigo.
+
+## 9. Segurança e controles
+
+Os controles implementados reduzem riscos relevantes do MVP, sem constituir uma afirmação de segurança absoluta.
+
+### 9.1 Pacote ZIP
+
+- validação da extensão e da assinatura ZIP;
+- teste de integridade do arquivo compactado;
+- rejeição de caminho absoluto, `..`, prefixo de unidade e byte NUL;
+- rejeição de links simbólicos, entradas duplicadas e arquivos criptografados;
+- limite de quantidade de arquivos;
+- limite do tamanho compactado e total descompactado;
+- limite da soma dos dicionários candidatos;
+- limite da taxa de compressão para reduzir risco de ZIP bomb;
+- leitura com `ZipFile.open`, sem `extractall`.
+
+O limite de upload padrão é 500 MB e pode ser reduzido por `APP_MAX_UPLOAD_MB`. Os demais limites são aplicados pelo processador antes ou durante a leitura.
+
+### 9.2 Dados e execução
+
+- dados oficiais e ZIPs gerados permanecem ignorados pelo Git;
+- `.env` e `GROQ_API_KEY` não são enviados ao modelo nem exibidos na UI;
+- os DataFrames permanecem na sessão e não são persistidos em banco;
+- não são usados `eval`, `exec`, Python ou pandas arbitrário gerado pelo LLM;
+- não há SQL arbitrário, shell orientado pelo usuário ou acesso irrestrito ao DataFrame;
+- tools aceitam somente operações e operadores enumerados;
+- resultados enviados ao agente possuem limites de linhas, colunas e texto;
+- erros esperados são convertidos em mensagens compreensíveis.
+
+### 9.3 Grounding
+
+O prompt exige que afirmações numéricas sejam sustentadas por tools. Para intenções reconhecidas, a aplicação acrescenta um controle local: compara cada resultado analítico ao plano esperado. Uma resposta pode ser bloqueada se a tool usar a granularidade, coluna, agregação ou agrupamento incorreto.
+
+Essas medidas reduzem o risco de resposta não fundamentada, mas não eliminam completamente a possibilidade de erro de interpretação ou de redação por um modelo probabilístico. A interface exibe a evidência justamente para permitir conferência humana.
+
+## 10. Interface A — carga e catálogo
+
+A Interface A apresenta uma área específica para ingestão, com nome e tamanho do arquivo, ação de processamento e limpeza dos dados da sessão. Durante a carga, `st.status` informa atividades que correspondem ao fluxo real: validação segura do ZIP, leitura dos CSVs, identificação ou ausência do dicionário e preparação em memória.
+
+Após uma carga válida, a interface exibe:
+
+- quantidade de datasets;
+- total de registros;
+- estado do dicionário;
+- nome de cada dataset;
+- linhas, colunas, encoding, separador e decimal;
+- lista de arquivos encontrados no pacote.
+
+![Interface A após o processamento do pacote 202401](screenshots/01_interface_a_processado.png)
+
+![Feedback das etapas reais de processamento](screenshots/02_interface_a_status_processamento.png)
+
+O pacote de demonstração 202401 carregou:
+
+| Dataset | Linhas | Colunas | Encoding | Separador | Decimal | Dicionário |
+|---|---:|---:|---|:---:|:---:|---|
+| `202401_NFs_Cabecalho` | 100 | 21 | `utf-8` | `,` | `.` | identificado |
+| `202401_NFs_Itens` | 565 | 27 | `utf-8` | `,` | `.` | identificado |
+| **Total** | **665** | — | — | — | — | — |
+
+## 11. Validação adicional da Interface A com o pacote 202505
+
+A robustez da ingestão foi validada com o arquivo oficial `202505_NFe.zip`, de aproximadamente 44,9 MB. A aplicação processou dois CSVs com formato diferente do pacote principal:
+
+| Dataset | Registros | Colunas | Encoding | Separador | Decimal |
+|---|---:|---:|---|:---:|:---:|
+| `202505_NFe_NotaFiscal` | 150.976 | 21 | `cp1252` | `;` | `,` |
+| `202505_NFe_NotaFiscalItem` | 549.431 | 27 | `cp1252` | `;` | `,` |
+| **Total** | **700.407** | — | — | — | — |
+
+O pacote não contém um dicionário reconhecido. A ausência foi apresentada como informação — “Dicionário de dados não identificado no pacote.” — e não como erro de processamento. O catálogo foi criado a partir do schema observado nos CSVs.
+
+![Pacote oficial 202505 processado pela Interface A](screenshots/04_dataset_202505_processado.png)
+
+Essa execução demonstra suporte a volume maior, CP1252, ponto e vírgula, decimal brasileiro e ausência legítima do dicionário. Ela não constitui garantia de desempenho para qualquer máquina ou volume, pois o MVP mantém os DataFrames integralmente em memória.
+
+## 12. Interface B — consulta e evidências
+
+A Interface B só é habilitada depois que existe ao menos um dataset válido. Ela utiliza `st.chat_message`, `st.chat_input` e histórico em `st.session_state`. A aplicação separa visualmente:
+
+1. pergunta do usuário;
+2. resposta textual;
+3. fonte dos dados;
+4. resumo do cálculo determinístico;
+5. tabela de evidência;
+6. gráfico, quando a tool e o conteúdo justificam a visualização.
+
+Rankings e categorias podem gerar barras; séries temporais podem gerar linhas. O gráfico não substitui a tabela, e resultados escalares ou rankings com uma única linha não recebem gráfico sem necessidade.
+
+## 13. Quatro perguntas obrigatórias e resultados reais
+
+Os resultados a seguir foram obtidos no `pacote_demo_202401.zip`. Os nomes e valores são evidências da execução e não regras especiais no código.
+
+### 13.1 Pergunta 1 — maior fornecedor por valor
+
+**Pergunta:** Qual fornecedor recebeu o maior valor no período?
+
+**Resposta:** **CHEMYUNION LTDA — R$ 1.292.418,75**.
+
+| Elemento | Execução real |
+|---|---|
+| Dataset | `202401_NFs_Cabecalho` |
+| Agrupamento | `RAZÃO SOCIAL EMITENTE` |
+| Valor | `VALOR NOTA FISCAL` |
+| Operação | `SUM(VALOR NOTA FISCAL)` |
+| Ordenação | decrescente |
+| Limite | top 1 |
+
+Conceitualmente, a tool executou `top_n` sobre o dataset de cabeçalho, agrupando pelo emitente, somando o valor das notas e mantendo o primeiro resultado em ordem decrescente.
+
+![Maior fornecedor por valor](screenshots/05_maior_fornecedor.png)
+
+### 13.2 Pergunta 2 — cinco maiores fornecedores
+
+**Pergunta:** Quais são os 5 maiores fornecedores por valor total das notas fiscais?
+
+**Resposta, em ordem decrescente:**
+
+| Posição | Fornecedor | Valor total das notas |
+|---:|---|---:|
+| 1 | CHEMYUNION LTDA | R$ 1.292.418,75 |
+| 2 | LABORATORIOS B.BRAUN S.A | R$ 726.081,60 |
+| 3 | XCMG BRASIL INDUSTRIA LTDA | R$ 330.000,00 |
+| 4 | EDITORA FTD S.A. | R$ 292.486,11 |
+| 5 | MALTACARE DISTRIBUIDORA LTDA | R$ 122.202,60 |
+
+| Elemento | Execução real |
+|---|---|
+| Dataset | `202401_NFs_Cabecalho` |
+| Agrupamento | `RAZÃO SOCIAL EMITENTE` |
+| Valor | `VALOR NOTA FISCAL` |
+| Operação | `SUM(VALOR NOTA FISCAL)` |
+| Ordenação | decrescente |
+| Limite | top 5 |
+
+![Top 5 fornecedores por valor total das notas](screenshots/06_top5_fornecedores.png)
+
+### 13.3 Pergunta 3 — produto com maior volume comprado
+
+**Pergunta:** Qual produto apresentou o maior volume comprado?
+
+**Resposta:** **DIPIFARMA INJETAVEL(DIPIRONA MONOIDR 500MG/ML) 2ML — 51.000 unidades**.
+
+| Elemento | Execução real |
+|---|---|
+| Dataset | `202401_NFs_Itens` |
+| Agrupamento | `DESCRIÇÃO DO PRODUTO/SERVIÇO` |
+| Valor | `QUANTIDADE` |
+| Operação | `SUM(QUANTIDADE)` |
+| Ordenação | decrescente |
+| Limite | top 1 |
+
+O volume é a soma da quantidade adquirida em todas as linhas do produto. Usar `COUNT(QUANTIDADE)` contaria ocorrências/registros e responderia a uma pergunta diferente; por isso essa operação é explicitamente rejeitada para a intenção de volume comprado.
+
+![Produto com maior volume comprado](screenshots/07_maior_volume_produto.png)
+
+### 13.4 Pergunta 4 — total gasto por mês
+
+**Pergunta:** Qual foi o total gasto em cada mês?
+
+**Resposta:** **2024-01 (janeiro de 2024) — R$ 3.371.754,84**.
+
+| Elemento | Execução real |
+|---|---|
+| Dataset | `202401_NFs_Cabecalho` |
+| Data | `DATA EMISSÃO` |
+| Valor | `VALOR NOTA FISCAL` |
+| Período | `year-month` |
+| Operação | `SUM(VALOR NOTA FISCAL)` |
+
+O cálculo usa o valor da nota no grão de cabeçalho. Somar `VALOR TOTAL` no arquivo de itens seria uma análise explicitamente sobre itens e não a regra adotada para o total das notas.
+
+![Total gasto por mês](screenshots/08_total_gasto_mes.png)
+
+## 14. Grounding qualitativo
+
+Foi testada a pergunta:
+
+> Por que a CHEMYUNION foi o fornecedor mais importante da empresa?
+
+A aplicação não converteu automaticamente “mais importante” em “maior valor financeiro”. Ela informou que os dados carregados não sustentavam esse julgamento qualitativo e solicitou um critério quantitativo.
+
+![Recusa de julgamento qualitativo sem critério](screenshots/09_grounding_qualitativo.png)
+
+Esse comportamento demonstra três controles:
+
+- separação entre um fato mensurável e uma avaliação qualitativa;
+- prevenção de uma conclusão que não está representada no schema nem nas tools;
+- solicitação de critério antes de produzir um ranking.
+
+O controle reduz uma classe conhecida de resposta não fundamentada, mas não deve ser interpretado como eliminação completa do risco de alucinação.
+
+## 15. Clarificação conversacional e múltiplas evidências
+
+A interação real foi:
+
+> **Usuário:** Qual foi o maior fornecedor ou cliente?
+>
+> **Aplicação:** solicita uma métrica objetiva.
+>
+> **Usuário:** Valor total.
+
+O `PendingClarification` preservou as duas dimensões enquanto aguardava apenas a métrica. Depois da resposta curta, `resolve_pending_clarification` gerou dois planos analíticos:
+
+| Dimensão | Resultado | Dataset | Agrupamento | Valor | Operação |
+|---|---|---|---|---|---|
+| Fornecedor | CHEMYUNION LTDA — R$ 1.292.418,75 | `202401_NFs_Cabecalho` | `RAZÃO SOCIAL EMITENTE` | `VALOR NOTA FISCAL` | soma, top 1 decrescente |
+| Cliente | INSTITUTO DE TECNOLOGIA EM FÁRMACOS — R$ 1.293.018,75 | `202401_NFs_Cabecalho` | `NOME DESTINATÁRIO` | `VALOR NOTA FISCAL` | soma, top 1 decrescente |
+
+Os dois `ToolResult`s foram associados um a um aos planos e preservados na mesma resposta. A interface apresentou fonte e tabela para ambas as dimensões, sem permitir que o segundo resultado mascarasse o primeiro.
+
+![Clarificação de fornecedor e cliente com duas evidências](screenshots/10_clarificacao_fornecedor_cliente.png)
+
+Essa evidência comprova detecção de ambiguidade, memória curta estruturada, retomada após complemento conciso e apresentação de múltiplas evidências determinísticas.
+
+## 16. Testes e validação
+
+### 16.1 Resultado final
+
+O comando executado foi:
+
+```powershell
+python -m pytest -q
+```
+
+Resultado final registrado:
+
+```text
+155 passed
+```
+
+Não foi calculada nem declarada cobertura percentual. Os testes automatizados não fazem chamadas reais à Groq; o loop do agente é exercitado com modelos e executores falsos.
+
+### 16.2 Escopo dos testes
+
+A suíte cobre, entre outros pontos:
+
+- ZIP válido, ZIP inválido, pacote sem CSV e entradas de path traversal;
+- links simbólicos, duplicidade, limites e taxa de compressão suspeita;
+- UTF-8, UTF-8-SIG, CP1252, Latin-1, vírgula, ponto e vírgula e convenções decimais;
+- conversões conservadoras, identificadores e rejeição de CSV com uma única coluna;
+- catálogo e associação do dicionário aos datasets;
+- soma, média, contagem, mínimo, máximo, agrupamento, ranking, filtros, valores únicos e agregação temporal;
+- contrato de `top_n.n` com inteiro ou string numérica e rejeição de valores inválidos;
+- regras semânticas de fornecedor, cliente, produto, volume, cabeçalho e itens;
+- criação, consumo e descarte de `PendingClarification`;
+- correspondência entre planos e múltiplos resultados;
+- grounding qualitativo;
+- classificação de erros Groq 400, 401, 403, 429, timeout e conexão;
+- estado da UI, histórico e renderização de tabelas e gráficos.
+
+A estrutura obrigatória também foi validada com sucesso:
 
 ```powershell
 python scripts/validate_structure.py
-pytest
-python -m compileall -q src scripts
 ```
 
-- **Saída do validador em 11/08/2026:** `Estrutura válida: todos os diretórios e arquivos obrigatórios estão presentes.`
-- **Saída do pytest em 11/08/2026:** `139 passed in 3.81s` (sem chamada real à Groq).
-- **Resultado de compilação/importação:** `compileall: OK`; imports dos módulos de configuração, processamento, tools, agente e UI concluídos.
-- **Resultado do smoke test Streamlit:** `AppTest` iniciou sem exceção, processou um ZIP com CSV+dicionário, exibiu dois resumos tabulares e manteve o chat desabilitado sem `GROQ_API_KEY`.
+```text
+Estrutura válida: todos os diretórios e arquivos obrigatórios estão presentes.
+```
 
-## 14. Pergunta 1 — fornecedor com maior valor
+Além dos testes automatizados, as capturas deste relatório registram execuções funcionais reais da Interface A e das consultas com o modelo configurado.
 
-**Pergunta:** “Qual fornecedor recebeu o maior valor no período?”
+## 17. Limitações conhecidas
 
-**Interpretação a confirmar na execução:** agrupar `RAZÃO SOCIAL EMITENTE` no dataset de cabeçalho e somar `VALOR NOTA FISCAL`, evitando duplicar o valor da nota pelas linhas de itens.
+1. **Memória:** pandas mantém os CSVs integralmente em memória. O pacote 202505 foi processado, mas volumes superiores dependem da memória disponível na máquina.
+2. **Persistência:** os dados e o histórico existem somente na sessão Streamlit; não há recuperação depois de seu encerramento.
+3. **Vocabulário semântico:** o resolvedor cobre os papéis necessários ao desafio e aliases conhecidos. Schemas opacos, empates ou formulações não reconhecidas podem exigir esclarecimento.
+4. **Relacionamentos:** não existe tool genérica de join. As consultas demonstradas operam em um dataset por plano; a LLM não cria junções arbitrárias.
+5. **LLM externo:** consultas dependem de chave, conectividade, disponibilidade e limites da Groq. `temperature=0` não elimina toda variabilidade de geração.
+6. **Dicionário opcional:** sem descrições, o fallback depende de nomes de schema convencionais e inequívocos; a aplicação prefere não adivinhar quando a escolha não é segura.
+7. **Análises permitidas:** as tools cobrem operações deliberadamente restritas. Perguntas que exijam estatística ou transformação não implementada precisam de evolução explícita e testada.
+8. **Grounding:** prompt, plano semântico, validação pós-tool e evidência visual reduzem riscos, mas a conferência humana continua recomendada para decisões relevantes.
 
-- **Pacote e período analisados:** `[PREENCHER APÓS EXECUÇÃO REAL]`
-- **Resposta gerada pela aplicação:** `[NÃO PREENCHIDO — EXECUTAR A APLICAÇÃO]`
-- **Tool e argumentos registrados:** `[PREENCHER COM O TOOL CALL REAL]`
-- **Resultado determinístico de conferência:** `[NÃO PREENCHIDO — CAPTURAR SAÍDA REAL]`
-- **Evidência:** `[INSERIR TABELA/CAPTURA E INFORMAR COMO O VALOR FOI CONFERIDO]`
+Essas limitações são compatíveis com o escopo de um MVP e evitam complexidade que não é necessária para demonstrar o desafio.
 
-## 15. Pergunta 2 — cinco maiores fornecedores
+## 18. Como executar
 
-**Pergunta:** “Quais foram os cinco maiores fornecedores por valor total?”
+### 18.1 Instalação no Windows PowerShell
 
-**Interpretação a confirmar na execução:** ranking decrescente de `RAZÃO SOCIAL EMITENTE` pela soma de `VALOR NOTA FISCAL` no cabeçalho, com N igual a cinco.
+Na raiz do repositório:
 
-- **Pacote e período analisados:** `[PREENCHER APÓS EXECUÇÃO REAL]`
-- **Resposta gerada pela aplicação:** `[NÃO PREENCHIDO — EXECUTAR A APLICAÇÃO]`
-- **Tool e argumentos registrados:** `[PREENCHER COM O TOOL CALL REAL]`
-- **Resultado determinístico de conferência:** `[NÃO PREENCHIDO — CAPTURAR SAÍDA REAL]`
-- **Evidência:** `[INSERIR TABELA/GRÁFICO DE BARRAS E CONFERÊNCIA]`
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+notepad .env
+python scripts/validate_structure.py
+python -m pytest -q
+streamlit run src/iica_csv/ui/app.py
+```
 
-## 16. Pergunta 3 — produto com maior volume
+No `.env`, deve ser preenchida localmente uma chave Groq válida:
 
-**Pergunta:** “Qual produto apresentou o maior volume comprado?”
+```dotenv
+GROQ_API_KEY=sua_chave_local
+GROQ_MODEL=llama-3.3-70b-versatile
+APP_MAX_UPLOAD_MB=500
+LOG_LEVEL=INFO
+```
 
-**Interpretação a confirmar na execução:** agrupar `DESCRIÇÃO DO PRODUTO/SERVIÇO` no dataset de itens, somar `QUANTIDADE` e ordenar de forma decrescente. “Volume” significa quantidade na unidade registrada, sem afirmar comparabilidade entre unidades incompatíveis.
+O arquivo `.env` não deve ser versionado.
 
-- **Pacote e período analisados:** `[PREENCHER APÓS EXECUÇÃO REAL]`
-- **Resposta gerada pela aplicação:** `[NÃO PREENCHIDO — EXECUTAR A APLICAÇÃO]`
-- **Tool e argumentos registrados:** `[PREENCHER COM O TOOL CALL REAL]`
-- **Resultado determinístico de conferência:** `[NÃO PREENCHIDO — CAPTURAR SAÍDA REAL]`
-- **Evidência e ressalva de unidade:** `[INSERIR TABELA/CAPTURA E VERIFICAR UNIDADE]`
+### 18.2 Pacote de demonstração
 
-## 17. Pergunta 4 — total gasto em cada mês
+Com `data/raw/202401_NFs.zip` disponível localmente, o pacote com dicionário pode ser montado sem extrair ou modificar os dados brutos:
 
-**Pergunta:** “Qual foi o total gasto em cada mês?”
+```powershell
+python scripts/build_demo_package.py
+```
 
-**Interpretação a confirmar na execução:** derivar ano-mês de `DATA EMISSÃO` e somar `VALOR NOTA FISCAL` no cabeçalho, sem replicar valores por item.
+O script lê os dois CSVs esperados do ZIP de origem, acrescenta `data/dictionaries/dicionario_dados_202401.json` como `dicionario_dados.json` e grava localmente `outputs/entrega/pacote_demo_202401.zip`. Os dados oficiais e o pacote gerado permanecem fora do versionamento.
 
-- **Pacote e período analisados:** `[PREENCHER APÓS EXECUÇÃO REAL]`
-- **Resposta gerada pela aplicação:** `[NÃO PREENCHIDO — EXECUTAR A APLICAÇÃO]`
-- **Tool e argumentos registrados:** `[PREENCHER COM O TOOL CALL REAL]`
-- **Resultado determinístico de conferência:** `[NÃO PREENCHIDO — CAPTURAR SAÍDA REAL]`
-- **Evidência:** `[INSERIR TABELA/GRÁFICO DE LINHA E CONFERÊNCIA]`
+## 19. Conclusão
 
-## 18. Validação adicional com dataset 202505
+O IICA-CSV atende ao objetivo do Desafio 4 com uma arquitetura pequena e rastreável. A solução processa com segurança pacotes ZIP com múltiplos CSVs, reconhece os formatos distintos dos datasets oficiais, incorpora um dicionário quando disponível e mantém o catálogo apenas na sessão.
 
-O arquivo local `data/raw/202505_NFe.zip` deve validar o cenário de maior volume, encoding CP1252/Windows-1252, separador `;` e decimal brasileiro `,`. Essa execução não deve enviar DataFrames completos à LLM.
+O uso de IA está concentrado onde agrega valor: interpretação da pergunta, seleção orquestrada das tools e redação da resposta. Dataset, coluna, granularidade e operação são orientados por resolução semântica local; os cálculos reais pertencem a ferramentas pandas restritas; e os resultados são devolvidos como evidências estruturadas. Clarificações pendentes, validação pós-tool, grounding qualitativo e tratamento específico de falhas da Groq tornam o comportamento mais conservador e explicável.
 
-- **Data e ambiente da execução:** 11/08/2026, Windows, Python 3.11.0, processo isolado no `.venv`.
-- **Arquivos localizados:** `202505_NFe_NotaFiscal.csv` e `202505_NFe_NotaFiscalItem.csv`.
-- **Encoding/separador/decimal identificados:** `cp1252`, `;` e `,` nos dois arquivos.
-- **Linhas e colunas carregadas:** 150.976 × 21 e 549.431 × 27, totalizando 700.407 registros.
-- **Tempo de carga:** 20,253 s na validação final desta máquina.
-- **Memória observada ou método de aferição:** Windows `GetProcessMemoryInfo`; working set inicial 71,6 MiB, final 602,4 MiB e pico 1.096,2 MiB.
-- **Consulta determinística executada:** `aggregate_data(operation="count")` nos dois datasets e `time_aggregation` no cabeçalho.
-- **Resultado:** contagens de 150.976 notas e 549.431 itens; uma série mensal foi produzida, com zero chamada à LLM.
-- **Limitação encontrada:** o pico próximo de 1,1 GiB confirma que o processamento pandas integral em memória exige folga de RAM, embora a carga tenha concluído sem arquitetura adicional.
-
-## 19. Limitações
-
-- Todo o conteúdo descompactado é mantido em memória; arquivos muito grandes podem exceder os recursos da máquina ou da hospedagem.
-- A aplicação depende de acesso à Groq para interpretar novas perguntas.
-- A linguagem natural pode ser ambígua; o agente deve pedir esclarecimento em vez de escolher silenciosamente entre interpretações materiais.
-- As tools cobrem operações frequentes, não uma linguagem analítica irrestrita.
-- Detecção de formato e conversão de tipos são heurísticas controladas e podem exigir ajuste para CSVs incomuns.
-- Sem dicionário, o agente conhece nomes e tipos observados, mas não deve inferir significados de negócio não demonstrados.
-- Somar quantidades de produtos com unidades diferentes pode não representar um volume fisicamente comparável.
-- O estado não é persistente e desaparece ao encerrar a sessão.
-
-**Limitações adicionais observadas nos testes finais:** o dataset 202505 atingiu pico de working set de aproximadamente 1,1 GiB. A validação real do texto produzido pela Groq continua dependente de uma chave local e deve ser feita pela equipe antes de preencher as seções 14–17.
-
-## 20. Conclusão
-
-O desenho do MVP separa interpretação de linguagem e cálculo: o agente decide qual ferramenta usar, enquanto pandas produz os resultados verificáveis. A solução mantém um fluxo didático, evita execução arbitrária e suporta os dois formatos oficiais sem introduzir infraestrutura desnecessária.
-
-**Conclusão após validação final e confirmação das quatro respostas:** `[ATUALIZAR SOMENTE APÓS EXECUTAR TODOS OS ITENS DO CHECKLIST]`
+As quatro perguntas obrigatórias foram respondidas com resultados reais, e o pacote 202505 demonstrou a robustez da Interface A em um volume e formato diferentes. Com `155 passed`, validação estrutural concluída e evidências visuais anexadas, o documento-fonte está pronto para a revisão final e exportação em PDF.

@@ -2,7 +2,7 @@
 
 Prazo oficial: **16/08/2026 às 23h59**.
 
-As caixas marcadas abaixo foram verificadas localmente em 11/08/2026. Itens que dependem da Groq, de revisão humana ou do empacotamento final permanecem abertos.
+As caixas marcadas abaixo foram verificadas localmente até 14/08/2026. A suíte automatizada final registrou `155 passed`, e a validação estrutural foi concluída com sucesso. Itens que dependem de revisão humana, exportação, empacotamento ou envio permanecem abertos.
 
 ## Instalação e configuração
 
@@ -46,7 +46,7 @@ As caixas marcadas abaixo foram verificadas localmente em 11/08/2026. Itens que 
 - [x] Cálculos são executados localmente com pandas.
 - [x] Nenhum DataFrame completo é enviado à LLM pelas tools.
 - [x] Não existem `eval`, `exec`, Python/SQL arbitrário ou shell orientado pelo usuário.
-- [ ] Pergunta ambígua pede esclarecimento quando necessário.
+- [x] Pergunta ambígua pede esclarecimento quando necessário.
 - [ ] Pergunta fora dos dados não produz fatos inventados.
 - [x] Toda afirmação numérica demonstrada nos testes é sustentada por resultado de tool.
 
@@ -63,23 +63,25 @@ As caixas marcadas abaixo foram verificadas localmente em 11/08/2026. Itens que 
 ## Testes e validações locais
 
 - [x] `python scripts/validate_structure.py` passa.
-- [x] `pytest` passa sem chamada real à Groq.
+- [x] `python -m pytest -q` registra `155 passed`, sem chamada real à Groq.
 - [x] `python -m compileall -q src scripts` passa.
 - [x] Smoke test do Streamlit conclui sem erro de importação/inicialização.
 - [x] `scripts/build_demo_package.py` gera o pacote demo sem alterar `data/raw`.
 - [x] `data/raw/202401_NFs.zip` carrega os dois CSVs e suporta as operações das perguntas de aceitação.
 - [x] `data/raw/202505_NFe.zip` valida volume, CP1252, `;` e decimal `,`.
-- [x] Uso de memória/tempo do dataset 202505 foi medido e documentado.
+- [x] Volume e formatos do dataset 202505 foram documentados com evidência real da Interface A.
 
 ## Evidências e documentação
 
-- [ ] Pergunta 1 possui resposta real e evidência determinística.
-- [ ] Pergunta 2 possui resposta real e evidência determinística.
-- [ ] Pergunta 3 possui resposta real e evidência determinística.
-- [ ] Pergunta 4 possui resposta real e evidência determinística.
+- [x] Pergunta 1 possui resposta real e evidência determinística.
+- [x] Pergunta 2 possui resposta real e evidência determinística.
+- [x] Pergunta 3 possui resposta real e evidência determinística.
+- [x] Pergunta 4 possui resposta real e evidência determinística.
+- [x] Grounding qualitativo possui evidência real e não converte julgamento em ranking financeiro.
+- [x] Clarificação de fornecedor/cliente preserva o contexto e apresenta duas evidências.
 - [x] README corresponde aos comandos e ao comportamento final.
 - [x] Arquitetura, decisões, segurança, erros e limitações estão atualizados.
-- [ ] `docs/relatorio_tecnico/relatorio.md` foi preenchido sem números inventados.
+- [x] `docs/relatorio_tecnico/relatorio.md` foi preenchido com resultados reais e sem placeholders de respostas.
 - [ ] O relatório final foi exportado em PDF e revisado.
 - [x] O notebook de Leonardo Vilela permanece preservado em `workspaces/`.
 - [x] Nenhuma funcionalidade exigida existe somente em `workspaces/`.
